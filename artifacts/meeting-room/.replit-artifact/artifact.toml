@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "会議室予約システム"
+version = "1.0.0"
+id = "artifacts/meeting-room"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26121
+
+[services.development]
+run = "pnpm --filter @workspace/meeting-room run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/meeting-room", "run", "build" ]
+publicDir = "artifacts/meeting-room/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26121"
+BASE_PATH = "/"
