@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -62,19 +63,19 @@ import {
   Building2,
 } from "lucide-react";
 
-// ── User schemas ────────────────────────────────────────────────────────────
+// ── User schemas (inline form) ───────────────────────────────────────────────
 const createUserSchema = z.object({
   name: z.string().min(1, "名前を入力してください"),
   email: z.string().email("有効なメールアドレスを入力してください"),
   password: z.string().min(6, "パスワードは6文字以上で入力してください"),
-  role: z.enum(["admin", "user"]),
+  isAdmin: z.boolean(),
 });
 type CreateUserData = z.infer<typeof createUserSchema>;
 
 const editUserSchema = z.object({
   name: z.string().min(1, "名前を入力してください"),
   email: z.string().email("有効なメールアドレスを入力してください"),
-  role: z.enum(["admin", "user"]),
+  isAdmin: z.boolean(),
 });
 type EditUserData = z.infer<typeof editUserSchema>;
 
@@ -97,7 +98,7 @@ type EditRoomData = z.infer<typeof editRoomSchema>;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type Tab = "users" | "rooms";
-type UserDialogMode = "none" | "add" | "edit" | "delete";
+type UserFormMode = "none" | "add" | "edit";
 type RoomDialogMode = "none" | "add" | "edit" | "delete";
 
 export default function Users() {
@@ -113,19 +114,20 @@ export default function Users() {
     if (user && user.role !== "admin") setLocation("/dashboard");
   }, [user, setLocation]);
 
-  // ── User state ──────────────────────────────────────────────────────────
-  const [userDialogMode, setUserDialogMode] = useState<UserDialogMode>("none");
+  // ── User inline form state ───────────────────────────────────────────────
+  const [userFormMode, setUserFormMode] = useState<UserFormMode>("none");
   const [editingUser, setEditingUser] = useState<{ id: number; name: string; email: string; role: string } | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [deletingUserName, setDeletingUserName] = useState<string>("");
+  const [showDeleteUserDialog, setShowDeleteUserDialog] = useState(false);
 
-  // ── Room state ──────────────────────────────────────────────────────────
+  // ── Room dialog state ────────────────────────────────────────────────────
   const [roomDialogMode, setRoomDialogMode] = useState<RoomDialogMode>("none");
   const [editingRoom, setEditingRoom] = useState<{ id: number; name: string; capacity: number; location: string; description?: string | null } | null>(null);
   const [deletingRoomId, setDeletingRoomId] = useState<number | null>(null);
   const [deletingRoomName, setDeletingRoomName] = useState<string>("");
 
-  // ── Queries ─────────────────────────────────────────────────────────────
+  // ── Queries ──────────────────────────────────────────────────────────────
   const { data: users, isLoading: usersLoading } = useListUsers({
     query: { queryKey: getListUsersQueryKey(), enabled: user?.role === "admin" },
   });
@@ -144,11 +146,11 @@ export default function Users() {
   // ── Forms ────────────────────────────────────────────────────────────────
   const createUserForm = useForm<CreateUserData>({
     resolver: zodResolver(createUserSchema),
-    defaultValues: { name: "", email: "", password: "", role: "user" },
+    defaultValues: { name: "", email: "", password: "", isAdmin: false },
   });
   const editUserForm = useForm<EditUserData>({
     resolver: zodResolver(editUserSchema),
-    defaultValues: { name: "", email: "", role: "user" },
+    defaultValues: { name: "", email: "", isAdmin: false },
   });
   const createRoomForm = useForm<CreateRoomData>({
     resolver: zodResolver(createRoomSchema),
@@ -163,31 +165,32 @@ export default function Users() {
 
   // ── User handlers ────────────────────────────────────────────────────────
   const openAddUser = () => {
-    createUserForm.reset({ name: "", email: "", password: "", role: "user" });
-    setUserDialogMode("add");
+    createUserForm.reset({ name: "", email: "", password: "", isAdmin: false });
+    setEditingUser(null);
+    setUserFormMode("add");
   };
 
   const openEditUser = (u: { id: number; name: string; email: string; role: string }) => {
     setEditingUser(u);
-    editUserForm.reset({ name: u.name, email: u.email, role: u.role as "admin" | "user" });
-    setUserDialogMode("edit");
+    editUserForm.reset({ name: u.name, email: u.email, isAdmin: u.role === "admin" });
+    setUserFormMode("edit");
   };
 
-  const openDeleteUser = (id: number, name: string) => {
-    setDeletingUserId(id);
-    setDeletingUserName(name);
-    setUserDialogMode("delete");
+  const cancelUserForm = () => {
+    setUserFormMode("none");
+    setEditingUser(null);
+    createUserForm.reset();
+    editUserForm.reset();
   };
 
   const handleCreateUser = (data: CreateUserData) => {
     createUser.mutate(
-      { data: { name: data.name, email: data.email, password: data.password, role: data.role } },
+      { data: { name: data.name, email: data.email, password: data.password, role: data.isAdmin ? "admin" : "user" } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
           toast({ title: "ユーザーを追加しました", description: data.name });
-          setUserDialogMode("none");
-          createUserForm.reset();
+          cancelUserForm();
         },
         onError: (err: unknown) => {
           const msg = (err as { data?: { error?: string } })?.data?.error ?? "追加に失敗しました";
@@ -200,13 +203,12 @@ export default function Users() {
   const handleUpdateUser = (data: EditUserData) => {
     if (!editingUser) return;
     updateUser.mutate(
-      { id: editingUser.id, data: { name: data.name, email: data.email, role: data.role } },
+      { id: editingUser.id, data: { name: data.name, email: data.email, role: data.isAdmin ? "admin" : "user" } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
           toast({ title: "ユーザーを更新しました", description: data.name });
-          setUserDialogMode("none");
-          setEditingUser(null);
+          cancelUserForm();
         },
         onError: (err: unknown) => {
           const msg = (err as { data?: { error?: string } })?.data?.error ?? "更新に失敗しました";
@@ -214,6 +216,12 @@ export default function Users() {
         },
       }
     );
+  };
+
+  const openDeleteUser = (id: number, name: string) => {
+    setDeletingUserId(id);
+    setDeletingUserName(name);
+    setShowDeleteUserDialog(true);
   };
 
   const handleDeleteUser = () => {
@@ -224,7 +232,7 @@ export default function Users() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
           toast({ title: "ユーザーを削除しました", description: deletingUserName });
-          setUserDialogMode("none");
+          setShowDeleteUserDialog(false);
           setDeletingUserId(null);
         },
         onError: (err: unknown) => {
@@ -243,12 +251,7 @@ export default function Users() {
 
   const openEditRoom = (r: { id: number; name: string; capacity: number; location: string; description?: string | null }) => {
     setEditingRoom(r);
-    editRoomForm.reset({
-      name: r.name,
-      capacity: r.capacity,
-      location: r.location,
-      description: r.description ?? "",
-    });
+    editRoomForm.reset({ name: r.name, capacity: r.capacity, location: r.location, description: r.description ?? "" });
     setRoomDialogMode("edit");
   };
 
@@ -314,6 +317,115 @@ export default function Users() {
     );
   };
 
+  // ── Shared inline user form panel ────────────────────────────────────────
+  const UserInlineForm = () => {
+    const isAdd = userFormMode === "add";
+    const form = isAdd ? createUserForm : editUserForm;
+
+    return (
+      <div className="bg-card border rounded-lg p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-muted-foreground">
+          {isAdd ? "新規ユーザー" : "ユーザー編集"}
+        </h3>
+
+        <Form {...(form as typeof createUserForm)}>
+          <form
+            onSubmit={
+              isAdd
+                ? createUserForm.handleSubmit(handleCreateUser)
+                : editUserForm.handleSubmit(handleUpdateUser)
+            }
+            className="space-y-4"
+          >
+            {/* Row 1: 名前 / メールアドレス */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control as typeof createUserForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>名前 <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <Input autoFocus {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control as typeof createUserForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>メールアドレス <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <Input type="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Row 2: パスワード (add only) / 管理者権限 checkbox */}
+            <div className="grid grid-cols-2 gap-4 items-end">
+              {isAdd ? (
+                <FormField
+                  control={createUserForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>パスワード <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <Input type="password" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <div />
+              )}
+
+              <FormField
+                control={form.control as typeof createUserForm.control}
+                name="isAdmin"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 pb-1">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value as boolean}
+                        onCheckedChange={field.onChange}
+                        id="isAdmin"
+                      />
+                    </FormControl>
+                    <FormLabel htmlFor="isAdmin" className="cursor-pointer !mt-0 font-normal">
+                      管理者権限
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" disabled={createUser.isPending || updateUser.isPending} size="sm">
+                {(createUser.isPending || updateUser.isPending) ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{isAdd ? "追加中..." : "更新中..."}</>
+                ) : (
+                  isAdd ? "追加" : "更新"
+                )}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={cancelUserForm}>
+                キャンセル
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Page title */}
@@ -325,7 +437,7 @@ export default function Users() {
       {/* Tabs */}
       <div className="flex gap-2 border-b">
         <button
-          onClick={() => setTab("users")}
+          onClick={() => { setTab("users"); cancelUserForm(); }}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
             tab === "users"
               ? "border-primary text-primary bg-primary/5 rounded-t"
@@ -336,7 +448,7 @@ export default function Users() {
           ユーザー管理
         </button>
         <button
-          onClick={() => setTab("rooms")}
+          onClick={() => { setTab("rooms"); cancelUserForm(); }}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
             tab === "rooms"
               ? "border-primary text-primary bg-primary/5 rounded-t"
@@ -353,12 +465,18 @@ export default function Users() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">ユーザー一覧</h2>
-            <Button onClick={openAddUser} size="sm">
-              <Plus className="w-4 h-4 mr-1.5" />
-              ユーザー追加
-            </Button>
+            {userFormMode === "none" && (
+              <Button onClick={openAddUser} size="sm">
+                <Plus className="w-4 h-4 mr-1.5" />
+                ユーザー追加
+              </Button>
+            )}
           </div>
 
+          {/* Inline form (add or edit) */}
+          {userFormMode !== "none" && <UserInlineForm />}
+
+          {/* User table */}
           <div className="bg-card rounded-lg border overflow-hidden">
             <Table>
               <TableHeader>
@@ -378,7 +496,7 @@ export default function Users() {
                   </TableRow>
                 ) : users && users.length > 0 ? (
                   users.map((u) => (
-                    <TableRow key={u.id}>
+                    <TableRow key={u.id} className={editingUser?.id === u.id ? "bg-muted/50" : ""}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
@@ -515,113 +633,8 @@ export default function Users() {
         </div>
       )}
 
-      {/* ══ USER DIALOGS ══════════════════════════════════════════════════════ */}
-
-      {/* Add User */}
-      <Dialog open={userDialogMode === "add"} onOpenChange={(o) => { if (!o) setUserDialogMode("none"); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>ユーザー追加</DialogTitle>
-          </DialogHeader>
-          <Form {...createUserForm}>
-            <form onSubmit={createUserForm.handleSubmit(handleCreateUser)} className="space-y-4">
-              <FormField control={createUserForm.control} name="name" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>名前 <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input placeholder="山田太郎" autoFocus {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={createUserForm.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>メールアドレス <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input type="email" placeholder="taro@example.com" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={createUserForm.control} name="password" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>パスワード <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input type="password" placeholder="6文字以上" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={createUserForm.control} name="role" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>権限 <span className="text-destructive">*</span></FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="user">一般</SelectItem>
-                      <SelectItem value="admin">管理者</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <DialogFooter className="gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setUserDialogMode("none")}>キャンセル</Button>
-                <Button type="submit" disabled={createUser.isPending}>
-                  {createUser.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />追加中...</> : "追加"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit User */}
-      <Dialog open={userDialogMode === "edit"} onOpenChange={(o) => { if (!o) { setUserDialogMode("none"); setEditingUser(null); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>ユーザー編集</DialogTitle>
-          </DialogHeader>
-          <Form {...editUserForm}>
-            <form onSubmit={editUserForm.handleSubmit(handleUpdateUser)} className="space-y-4">
-              <FormField control={editUserForm.control} name="name" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>名前 <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input autoFocus {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editUserForm.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>メールアドレス <span className="text-destructive">*</span></FormLabel>
-                  <FormControl><Input type="email" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editUserForm.control} name="role" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>権限 <span className="text-destructive">*</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="user">一般</SelectItem>
-                      <SelectItem value="admin">管理者</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <DialogFooter className="gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => { setUserDialogMode("none"); setEditingUser(null); }}>キャンセル</Button>
-                <Button type="submit" disabled={updateUser.isPending}>
-                  {updateUser.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />更新中...</> : "更新"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete User confirmation */}
-      <Dialog open={userDialogMode === "delete"} onOpenChange={(o) => { if (!o) setUserDialogMode("none"); }}>
+      {/* ══ Delete User confirmation dialog ══════════════════════════════════ */}
+      <Dialog open={showDeleteUserDialog} onOpenChange={(o) => { if (!o) setShowDeleteUserDialog(false); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>ユーザーの削除</DialogTitle>
@@ -630,7 +643,7 @@ export default function Users() {
             <span className="font-medium text-foreground">{deletingUserName}</span> を削除しますか？この操作は取り消せません。
           </p>
           <DialogFooter className="gap-2 pt-2">
-            <Button variant="outline" onClick={() => setUserDialogMode("none")}>キャンセル</Button>
+            <Button variant="outline" onClick={() => setShowDeleteUserDialog(false)}>キャンセル</Button>
             <Button variant="destructive" onClick={handleDeleteUser} disabled={deleteUser.isPending}>
               {deleteUser.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />削除中...</> : "削除"}
             </Button>
