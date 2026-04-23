@@ -171,16 +171,17 @@ router.patch("/reservations/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const newRoomId = parsed.data.roomId ?? existing.roomId;
   const newStart = parsed.data.startTime ?? existing.startTime;
   const newEnd = parsed.data.endTime ?? existing.endTime;
 
-  if (parsed.data.startTime || parsed.data.endTime) {
+  if (parsed.data.roomId || parsed.data.startTime || parsed.data.endTime) {
     const conflictCheck = await db
       .select()
       .from(reservationsTable)
       .where(
         and(
-          eq(reservationsTable.roomId, existing.roomId),
+          eq(reservationsTable.roomId, newRoomId),
           eq(reservationsTable.status, "confirmed"),
           sql`${reservationsTable.id} != ${params.data.id}`,
           sql`${reservationsTable.startTime} < ${newEnd} AND ${reservationsTable.endTime} > ${newStart}`

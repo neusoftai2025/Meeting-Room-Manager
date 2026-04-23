@@ -177,6 +177,7 @@ export const UpdateReservationBodyStatus = {
 } as const;
 
 export interface UpdateReservationBody {
+  roomId?: number;
   title?: string;
   /** @nullable */
   description?: string | null;

@@ -247,6 +247,7 @@ export const UpdateReservationParams = zod.object({
 });
 
 export const UpdateReservationBody = zod.object({
+  roomId: zod.number().optional(),
   title: zod.string().optional(),
   description: zod.string().nullish(),
   startTime: zod.coerce.date().optional(),

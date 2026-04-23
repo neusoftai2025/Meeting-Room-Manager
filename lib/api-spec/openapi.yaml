@@ -741,6 +741,8 @@ components:
     UpdateReservationBody:
       type: object
       properties:
+        roomId:
+          type: integer
         title:
           type: string
         description:
