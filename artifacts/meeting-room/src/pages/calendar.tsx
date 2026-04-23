@@ -77,20 +77,33 @@ interface Selection {
   endSlot: number;
 }
 
-const reservationSchema = z.object({
-  title: z.string().min(1, "タイトルを入力してください"),
-  description: z.string().optional(),
-  attendees: z.string().optional(),
-});
+const reservationSchema = z
+  .object({
+    roomId: z.string().min(1, "会議室を選択してください"),
+    title: z.string().min(1, "タイトルを入力してください"),
+    startTime: z.string().min(1, "開始時刻を入力してください"),
+    endTime: z.string().min(1, "終了時刻を入力してください"),
+    description: z.string().optional(),
+    attendees: z.string().optional(),
+  })
+  .refine((d) => d.startTime < d.endTime, {
+    message: "終了時刻は開始時刻よりも後に設定してください",
+    path: ["endTime"],
+  });
 type ReservationFormData = z.infer<typeof reservationSchema>;
 
-const editSchema = z.object({
-  roomId: z.string().min(1, "会議室を選択してください"),
-  title: z.string().min(1, "タイトルを入力してください"),
-  startTime: z.string().min(1, "開始時刻を入力してください"),
-  endTime: z.string().min(1, "終了時刻を入力してください"),
-  description: z.string().optional(),
-});
+const editSchema = z
+  .object({
+    roomId: z.string().min(1, "会議室を選択してください"),
+    title: z.string().min(1, "タイトルを入力してください"),
+    startTime: z.string().min(1, "開始時刻を入力してください"),
+    endTime: z.string().min(1, "終了時刻を入力してください"),
+    description: z.string().optional(),
+  })
+  .refine((d) => d.startTime < d.endTime, {
+    message: "終了時刻は開始時刻よりも後に設定してください",
+    path: ["endTime"],
+  });
 type EditFormData = z.infer<typeof editSchema>;
 
 export default function Calendar() {
@@ -130,7 +143,7 @@ export default function Calendar() {
 
   const form = useForm<ReservationFormData>({
     resolver: zodResolver(reservationSchema),
-    defaultValues: { title: "", description: "", attendees: "" },
+    defaultValues: { roomId: "", title: "", startTime: "", endTime: "", description: "", attendees: "" },
   });
 
   const editForm = useForm<EditFormData>({
@@ -183,7 +196,14 @@ export default function Calendar() {
     dragStartSlot.current = null;
 
     setPendingSelection(selection);
-    form.reset({ title: "", description: "", attendees: "" });
+    form.reset({
+      roomId: String(selection.roomId),
+      title: "",
+      startTime: slotToTime(selection.startSlot),
+      endTime: slotToTime(selection.endSlot),
+      description: "",
+      attendees: "",
+    });
     setDialogOpen(true);
   }, [selection, form]);
 
@@ -203,19 +223,16 @@ export default function Calendar() {
   };
 
   const onSubmit = async (data: ReservationFormData) => {
-    if (!pendingSelection) return;
-
-    const startTime = slotToDate(selectedDate, pendingSelection.startSlot);
-    const endTime = slotToDate(selectedDate, pendingSelection.endSlot);
+    const dateBase = format(selectedDate, "yyyy-MM-dd");
 
     createReservation.mutate(
       {
         data: {
-          roomId: pendingSelection.roomId,
+          roomId: parseInt(data.roomId),
           title: data.title,
           description: data.description || undefined,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
+          startTime: new Date(`${dateBase}T${data.startTime}:00`).toISOString(),
+          endTime: new Date(`${dateBase}T${data.endTime}:00`).toISOString(),
           attendees: data.attendees ? parseInt(data.attendees) : undefined,
         },
       },
@@ -488,43 +505,46 @@ export default function Calendar() {
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleDialogClose(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>会議室予約</DialogTitle>
+            <DialogTitle>予約登録</DialogTitle>
+            <p className="text-sm text-muted-foreground pt-1">
+              {format(selectedDate, "yyyy年M月d日（E）", { locale: ja })}
+            </p>
           </DialogHeader>
-
-          {pendingSelection && selectedRoom && (
-            <div className="bg-muted rounded-lg px-4 py-3 mb-2 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">会議室</span>
-                <span className="font-medium">{selectedRoom.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">日付</span>
-                <span className="font-medium">
-                  {format(selectedDate, "yyyy年M月d日（E）", { locale: ja })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">時間</span>
-                <span className="font-medium">
-                  {slotToTime(pendingSelection.startSlot)} 〜{" "}
-                  {slotToTime(pendingSelection.endSlot)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">定員</span>
-                <span className="font-medium">{selectedRoom.capacity}名</span>
-              </div>
-            </div>
-          )}
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {/* 会議室 */}
+              <FormField
+                control={form.control}
+                name="roomId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>会議室 <span className="text-destructive">*</span></FormLabel>
+                    <FormControl>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        {...field}
+                      >
+                        <option value="">会議室を選択してください</option>
+                        {activeRooms.map((r) => (
+                          <option key={r.id} value={String(r.id)}>
+                            {r.name}（定員{r.capacity}名）
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* タイトル */}
               <FormField
                 control={form.control}
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>会議タイトル <span className="text-destructive">*</span></FormLabel>
+                    <FormLabel>タイトル <span className="text-destructive">*</span></FormLabel>
                     <FormControl>
                       <Input
                         placeholder="例）週次ミーティング"
@@ -538,38 +558,48 @@ export default function Calendar() {
                 )}
               />
 
+              {/* 開始時刻 / 終了時刻 */}
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>開始時刻 <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <Input type="time" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>終了時刻 <span className="text-destructive">*</span></FormLabel>
+                      <FormControl>
+                        <Input type="time" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* 説明 */}
               <FormField
                 control={form.control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>内容・備考</FormLabel>
+                    <FormLabel>説明（任意）</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="会議の内容や備考を入力（任意）"
+                        placeholder="会議の内容や備考を入力"
                         rows={2}
                         data-testid="input-description"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="attendees"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>参加人数</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={selectedRoom?.capacity}
-                        placeholder="例）5"
-                        data-testid="input-attendees"
                         {...field}
                       />
                     </FormControl>
@@ -598,7 +628,7 @@ export default function Calendar() {
                       登録中...
                     </>
                   ) : (
-                    "予約する"
+                    "登録"
                   )}
                 </Button>
               </DialogFooter>

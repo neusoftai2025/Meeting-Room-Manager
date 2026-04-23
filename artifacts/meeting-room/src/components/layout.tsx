@@ -3,11 +3,18 @@ import { useAuth } from "@/contexts/auth-context";
 import { useLogout } from "@workspace/api-client-react";
 import { LogOut, CalendarDays, LayoutDashboard, Building2, Users, Loader2, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
 
 export function Layout({ children, fullHeight }: { children: React.ReactNode; fullHeight?: boolean }) {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading, refreshUser } = useAuth();
   const logoutMutation = useLogout();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      setLocation("/login");
+    }
+  }, [isLoading, isAuthenticated, setLocation]);
 
   if (isLoading) {
     return (
@@ -18,7 +25,6 @@ export function Layout({ children, fullHeight }: { children: React.ReactNode; fu
   }
 
   if (!isAuthenticated) {
-    setLocation("/login");
     return null;
   }
 
