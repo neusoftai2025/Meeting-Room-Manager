@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
+import Calendar from "@/pages/calendar";
 import Reservations from "@/pages/reservations";
 import NewReservation from "@/pages/reservation-new";
 import ReservationDetail from "@/pages/reservation-detail";
@@ -34,6 +35,13 @@ function Router() {
         {() => (
           <Layout>
             <Dashboard />
+          </Layout>
+        )}
+      </Route>
+      <Route path="/calendar">
+        {() => (
+          <Layout fullHeight>
+            <Calendar />
           </Layout>
         )}
       </Route>

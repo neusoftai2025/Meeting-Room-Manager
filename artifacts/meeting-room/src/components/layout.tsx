@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth-context";
 import { useLogout } from "@workspace/api-client-react";
-import { LogOut, Calendar, LayoutDashboard, Building2, Users, Loader2 } from "lucide-react";
+import { LogOut, CalendarDays, LayoutDashboard, Building2, Users, Loader2, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children, fullHeight }: { children: React.ReactNode; fullHeight?: boolean }) {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading, refreshUser } = useAuth();
   const logoutMutation = useLogout();
@@ -33,7 +33,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
-    { href: "/reservations", label: "予約一覧", icon: Calendar },
+    { href: "/calendar", label: "予約カレンダー", icon: CalendarDays },
+    { href: "/reservations", label: "予約一覧", icon: List },
     { href: "/rooms", label: "会議室", icon: Building2 },
   ];
 
@@ -106,11 +107,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="mx-auto max-w-6xl">
+        {fullHeight ? (
+          <div className="flex-1 flex flex-col overflow-hidden p-4 md:p-6" style={{ minHeight: 0 }}>
             {children}
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 md:p-8">
+            <div className="mx-auto max-w-6xl">
+              {children}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

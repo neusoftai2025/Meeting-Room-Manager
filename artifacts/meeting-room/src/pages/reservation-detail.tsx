@@ -1,4 +1,4 @@
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, Link } from "wouter";
 import { useGetReservation, useUpdateReservation, useDeleteReservation, getGetReservationQueryKey, getListReservationsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";

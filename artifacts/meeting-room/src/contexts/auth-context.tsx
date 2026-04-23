@@ -1,6 +1,6 @@
 import { createContext, useContext, ReactNode } from "react";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
-import type { User } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { User } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface AuthContextType {
