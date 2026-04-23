@@ -271,10 +271,18 @@ export default function Calendar() {
           handleDialogClose();
         },
         onError: (err: unknown) => {
-          const msg =
-            (err as { data?: { error?: string } })?.data?.error ??
-            "予約の登録に失敗しました";
-          toast({ title: "エラー", description: msg, variant: "destructive" });
+          const status = (err as { status?: number })?.status;
+          if (status === 409) {
+            form.setError("root", {
+              type: "manual",
+              message: "他の予約と時間帯が重複しています。",
+            });
+          } else {
+            const msg =
+              (err as { data?: { error?: string } })?.data?.error ??
+              "予約の登録に失敗しました";
+            toast({ title: "エラー", description: msg, variant: "destructive" });
+          }
         },
       }
     );
@@ -332,10 +340,18 @@ export default function Calendar() {
           handleDetailClose();
         },
         onError: (err: unknown) => {
-          const msg =
-            (err as { data?: { error?: string } })?.data?.error ??
-            "更新に失敗しました";
-          toast({ title: "エラー", description: msg, variant: "destructive" });
+          const status = (err as { status?: number })?.status;
+          if (status === 409) {
+            editForm.setError("root", {
+              type: "manual",
+              message: "他の予約と時間帯が重複しています。",
+            });
+          } else {
+            const msg =
+              (err as { data?: { error?: string } })?.data?.error ??
+              "更新に失敗しました";
+            toast({ title: "エラー", description: msg, variant: "destructive" });
+          }
         },
       }
     );
@@ -634,6 +650,12 @@ export default function Calendar() {
                 )}
               />
 
+              {form.formState.errors.root && (
+                <p className="text-sm text-destructive">
+                  {form.formState.errors.root.message}
+                </p>
+              )}
+
               <DialogFooter className="gap-2 sm:gap-0 pt-2">
                 <Button
                   type="button"
@@ -830,6 +852,13 @@ export default function Calendar() {
                       </FormItem>
                     )}
                   />
+
+                  {editForm.formState.errors.root && (
+                    <p className="text-sm text-destructive">
+                      {editForm.formState.errors.root.message}
+                    </p>
+                  )}
+
                   <DialogFooter className="gap-2 pt-2">
                     <Button
                       type="button"
