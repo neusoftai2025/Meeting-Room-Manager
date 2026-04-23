@@ -4,16 +4,29 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format, addDays, subDays, startOfDay, isSameDay } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, X, Loader2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  CalendarIcon,
+  Clock,
+  MapPin,
+  User,
+  Trash2,
+  Pencil,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListRooms,
   useListReservations,
   useCreateReservation,
+  useDeleteReservation,
   getListReservationsQueryKey,
   getListRoomsQueryKey,
 } from "@workspace/api-client-react";
+import type { ReservationWithDetails } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth-context";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +45,16 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 
 const SLOT_HEIGHT = 40;
@@ -76,12 +99,21 @@ export default function Calendar() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<Selection | null>(null);
+
+  // Detail modal state
+  const [detailRes, setDetailRes] = useState<ReservationWithDetails | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
   const isDragging = useRef(false);
   const dragRoomId = useRef<number | null>(null);
   const dragStartSlot = useRef<number | null>(null);
+  const dragMoved = useRef(false);
+
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -92,6 +124,7 @@ export default function Calendar() {
   );
 
   const createReservation = useCreateReservation();
+  const deleteReservation = useDeleteReservation();
 
   const form = useForm<ReservationFormData>({
     resolver: zodResolver(reservationSchema),
@@ -114,6 +147,7 @@ export default function Calendar() {
     (e: React.MouseEvent, roomId: number, slot: number) => {
       e.preventDefault();
       isDragging.current = true;
+      dragMoved.current = false;
       dragRoomId.current = roomId;
       dragStartSlot.current = slot;
       setSelection({ roomId, startSlot: slot, endSlot: slot + 1 });
@@ -123,6 +157,7 @@ export default function Calendar() {
 
   const handleCellMouseEnter = useCallback((roomId: number, slot: number) => {
     if (!isDragging.current || dragRoomId.current !== roomId) return;
+    dragMoved.current = true;
     const start = dragStartSlot.current!;
     setSelection({
       roomId,
@@ -195,9 +230,57 @@ export default function Calendar() {
     );
   };
 
+  // Detail modal handlers
+  const handleReservationClick = useCallback(
+    (e: React.MouseEvent, res: ReservationWithDetails) => {
+      e.stopPropagation();
+      setDetailRes(res);
+      setDetailOpen(true);
+    },
+    []
+  );
+
+  const handleDetailClose = () => {
+    setDetailOpen(false);
+    setDetailRes(null);
+  };
+
+  const handleEdit = () => {
+    if (!detailRes) return;
+    handleDetailClose();
+    navigate(`/reservations/${detailRes.id}`);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!detailRes) return;
+    deleteReservation.mutate(
+      { id: detailRes.id },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            queryKey: getListReservationsQueryKey({ date: dateStr }),
+          });
+          toast({ title: "予約を削除しました", description: detailRes.title });
+          setDeleteConfirmOpen(false);
+          handleDetailClose();
+        },
+        onError: () => {
+          toast({
+            title: "エラー",
+            description: "削除に失敗しました",
+            variant: "destructive",
+          });
+          setDeleteConfirmOpen(false);
+        },
+      }
+    );
+  };
+
   const selectedRoom = activeRooms.find(
     (r) => r.id === (pendingSelection?.roomId ?? selection?.roomId)
   );
+
+  const detailRoom = activeRooms.find((r) => r.id === detailRes?.roomId);
 
   return (
     <div className="flex flex-col h-full">
@@ -239,15 +322,14 @@ export default function Calendar() {
       >
         {/* Sticky header row (room names) */}
         <div className="sticky top-0 z-20 bg-card border-b flex">
-          {/* Time gutter */}
           <div
             className="flex-shrink-0 border-r bg-card"
             style={{ width: TIME_COL_WIDTH }}
           />
-          {activeRooms.map((room, i) => (
+          {activeRooms.map((room) => (
             <div
               key={room.id}
-              className={`flex-1 min-w-[140px] px-3 py-2 border-r last:border-r-0 ${i === 0 ? "" : ""}`}
+              className="flex-1 min-w-[140px] px-3 py-2 border-r last:border-r-0"
             >
               <div className="font-semibold text-sm text-foreground">{room.name}</div>
               <div className="text-xs text-muted-foreground">定員{room.capacity}名</div>
@@ -306,7 +388,7 @@ export default function Calendar() {
                       data-room={room.id}
                       data-slot={slot}
                       style={{ height: SLOT_HEIGHT }}
-                      className={`border-r-0 cursor-pointer transition-colors ${
+                      className={`cursor-pointer transition-colors ${
                         isHour
                           ? "border-t border-border"
                           : "border-t border-border/30"
@@ -333,23 +415,20 @@ export default function Calendar() {
                   return (
                     <div
                       key={res.id}
-                      className="absolute left-0.5 right-0.5 rounded bg-blue-500 text-white px-2 py-1 overflow-hidden pointer-events-none z-10"
+                      className="absolute left-0.5 right-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 overflow-hidden z-10 cursor-pointer transition-colors"
                       style={{ top: top + 1, height }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => handleReservationClick(e, res)}
                     >
                       <div className="text-xs font-bold leading-tight truncate">
-                        {startStr}
-                      </div>
-                      <div className="text-xs leading-tight truncate">
-                        {res.user.name}
+                        {res.title}
                       </div>
                       <div className="text-xs leading-tight truncate opacity-90">
+                        {res.user.name}
+                      </div>
+                      <div className="text-xs leading-tight truncate opacity-80">
                         {startStr} - {endStr}
                       </div>
-                      {height > 70 && (
-                        <div className="text-xs leading-tight truncate opacity-80 mt-0.5">
-                          {res.title}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -359,7 +438,7 @@ export default function Calendar() {
         </div>
       </div>
 
-      {/* Booking Dialog */}
+      {/* ── Booking Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleDialogClose(); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -481,6 +560,130 @@ export default function Calendar() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Reservation Detail Dialog ── */}
+      <Dialog open={detailOpen} onOpenChange={(open) => { if (!open) handleDetailClose(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>予約詳細</DialogTitle>
+          </DialogHeader>
+
+          {detailRes && (
+            <div className="space-y-5 py-1">
+              <p className="text-xl font-bold text-foreground">{detailRes.title}</p>
+
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <CalendarIcon className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">日付</p>
+                    <p className="text-sm font-medium">
+                      {format(new Date(detailRes.startTime), "yyyy-MM-dd")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Clock className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">時間</p>
+                    <p className="text-sm font-medium">
+                      {format(new Date(detailRes.startTime), "HH:mm")} -{" "}
+                      {format(new Date(detailRes.endTime), "HH:mm")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <MapPin className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">会議室</p>
+                    <p className="text-sm font-medium">
+                      {detailRoom
+                        ? `${detailRoom.name} (定員${detailRoom.capacity}名)`
+                        : `会議室 #${detailRes.roomId}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <User className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">予約者</p>
+                    <p className="text-sm font-medium">{detailRes.user.name}</p>
+                  </div>
+                </div>
+
+                {detailRes.description && (
+                  <div className="flex items-start gap-3">
+                    <div className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">備考</p>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">
+                        {detailRes.description}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="flex-row gap-2 sm:justify-start pt-2">
+                <Button
+                  variant="default"
+                  className="flex-1"
+                  onClick={handleEdit}
+                >
+                  <Pencil className="w-4 h-4 mr-1.5" />
+                  編集
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  disabled={deleteReservation.isPending}
+                >
+                  {deleteReservation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-1.5" />
+                      削除
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={handleDetailClose}
+                >
+                  閉じる
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation ── */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>予約を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              「{detailRes?.title}」を削除します。この操作は元に戻せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteConfirm}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
