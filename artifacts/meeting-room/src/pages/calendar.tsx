@@ -77,6 +77,38 @@ interface Selection {
   endSlot: number;
 }
 
+const toMinutes = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
+
+const timeRangeRefinement = (
+  d: { startTime: string; endTime: string },
+  ctx: z.RefinementCtx
+) => {
+  if (!d.startTime || !d.endTime) return;
+  const diff = toMinutes(d.endTime) - toMinutes(d.startTime);
+  if (diff <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "終了時刻は開始時刻よりも後に設定してください",
+      path: ["endTime"],
+    });
+  } else if (diff < 30) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "予約時間は最低30分必要です",
+      path: ["endTime"],
+    });
+  } else if (diff > 24 * 60) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "予約時間は最長24時間までです",
+      path: ["endTime"],
+    });
+  }
+};
+
 const reservationSchema = z
   .object({
     roomId: z.string().min(1, "会議室を選択してください"),
@@ -86,10 +118,7 @@ const reservationSchema = z
     description: z.string().optional(),
     attendees: z.string().optional(),
   })
-  .refine((d) => d.startTime < d.endTime, {
-    message: "終了時刻は開始時刻よりも後に設定してください",
-    path: ["endTime"],
-  });
+  .superRefine(timeRangeRefinement);
 type ReservationFormData = z.infer<typeof reservationSchema>;
 
 const editSchema = z
@@ -100,10 +129,7 @@ const editSchema = z
     endTime: z.string().min(1, "終了時刻を入力してください"),
     description: z.string().optional(),
   })
-  .refine((d) => d.startTime < d.endTime, {
-    message: "終了時刻は開始時刻よりも後に設定してください",
-    path: ["endTime"],
-  });
+  .superRefine(timeRangeRefinement);
 type EditFormData = z.infer<typeof editSchema>;
 
 export default function Calendar() {
