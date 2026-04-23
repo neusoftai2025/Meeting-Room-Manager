@@ -45,7 +45,7 @@ export function Layout({ children, fullHeight }: { children: React.ReactNode; fu
   ];
 
   if (user?.role === "admin") {
-    navItems.push({ href: "/users", label: "ユーザー管理", icon: Users });
+    navItems.push({ href: "/users", label: "管理", icon: Users });
   }
 
   return (
